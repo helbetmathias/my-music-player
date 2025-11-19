@@ -44,6 +44,7 @@ export default function App() {
   const [showPlaylistMobile, setShowPlaylistMobile] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [activeCoverArt, setActiveCoverArt] = useState(null);
+  const [history, setHistory] = useState([]); // History stack for shuffle navigation
   
   // Feature States
   const [searchQuery, setSearchQuery] = useState("");
@@ -219,6 +220,12 @@ export default function App() {
 
   const playNext = () => {
     if (playlist.length === 0) return;
+    
+    // If shuffling, save current song to history before moving
+    if (isShuffle) {
+      setHistory(prev => [...prev, currentTrackIndex]);
+    }
+
     let nextIndex;
     if (isShuffle) nextIndex = Math.floor(Math.random() * playlist.length);
     else nextIndex = currentTrackIndex + 1;
@@ -237,6 +244,17 @@ export default function App() {
       audioRef.current.currentTime = 0;
       return;
     }
+    
+    // If shuffle is ON and we have history, go back to actual previous song
+    if (isShuffle && history.length > 0) {
+      const lastIndex = history[history.length - 1];
+      setHistory(prev => prev.slice(0, -1)); // Remove last entry
+      setCurrentTrackIndex(lastIndex);
+      setIsPlaying(true);
+      return;
+    }
+
+    // Standard linear previous behavior
     let prevIndex = currentTrackIndex - 1;
     if (prevIndex < 0) prevIndex = playlist.length - 1;
     setCurrentTrackIndex(prevIndex);
@@ -381,6 +399,7 @@ export default function App() {
       setCurrentTrackIndex(currentTrackIndex - 1);
     }
     setPlaylist(newPlaylist);
+    setHistory([]); // Clear history on deletion to prevent index errors
   };
 
   const clearPlaylist = () => {
@@ -393,6 +412,7 @@ export default function App() {
     setActiveCoverArt(null);
     currentTrackIdRef.current = null;
     setThemeColor("rgb(99, 102, 241)");
+    setHistory([]);
   };
 
   // --- Filtered Playlist ---
@@ -516,6 +536,10 @@ export default function App() {
                     <li 
                       key={track.id}
                       onClick={() => {
+                        // If shuffling and user manually changes track, add old track to history
+                        if (isShuffle && currentTrackIndex !== -1) {
+                           setHistory(prev => [...prev, currentTrackIndex]);
+                        }
                         setCurrentTrackIndex(originalIndex);
                         setIsPlaying(true);
                         setShowPlaylistMobile(false);
@@ -600,7 +624,7 @@ export default function App() {
 
             {/* Song Info */}
             <div className="space-y-2 w-full px-4">
-              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 md:line-clamp-1">
+              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">
                 {playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}
               </h2>
               <p className="font-medium tracking-wide text-sm md:text-base transition-colors duration-1000" style={{ color: themeColor }}>

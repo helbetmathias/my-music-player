@@ -405,7 +405,7 @@ export default function App() {
 
   return (
     <div 
-      className="flex flex-col h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-indigo-500/30 selection:text-white"
+      className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-indigo-500/30 selection:text-white"
       onDragOver={onDragOver}
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
@@ -426,7 +426,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative">
+      <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative flex-shrink-0">
         <div className="flex items-center gap-3">
           {/* STATIC LOGO COLORS */}
           <div 
@@ -461,7 +461,7 @@ export default function App() {
           ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative
         `}>
           {/* Sidebar Header & Search */}
-          <div className="p-4 border-b border-slate-800 flex flex-col gap-3">
+          <div className="p-4 border-b border-slate-800 flex flex-col gap-3 flex-shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2">
                 <ListMusic size={16} /> Queue ({playlist.length})
@@ -491,7 +491,7 @@ export default function App() {
           </div>
 
           {/* Mobile Add Buttons */}
-          <div className="md:hidden p-3 flex gap-2 border-b border-slate-800 bg-slate-900/50">
+          <div className="md:hidden p-3 flex gap-2 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
              <button onClick={() => { fileInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-slate-800 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><Plus size={14} /> Add Files</button>
              <button onClick={() => { folderInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><FolderOpen size={14} /> Add Folder</button>
           </div>
@@ -537,7 +537,6 @@ export default function App() {
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-slate-500"><FileAudio size={18} /></div>
                           )}
-                          {/* No overlay circle or animation here to prevent flickering */}
                         </div>
                         <div className="min-w-0">
                           <p className={`text-sm font-medium truncate ${currentTrackIndex === originalIndex ? 'text-indigo-200' : 'text-slate-300'}`}>
@@ -614,7 +613,7 @@ export default function App() {
       </div>
 
       {/* Player Controls Bar */}
-      <div className="h-24 bg-slate-900 border-t border-slate-800 px-4 md:px-8 flex items-center gap-6 z-50 relative">
+      <div className="h-24 bg-slate-900 border-t border-slate-800 px-4 md:px-8 flex items-center gap-6 z-50 relative flex-shrink-0">
         <div className="flex items-center gap-4 flex-1 md:flex-none justify-center md:justify-start order-2 md:order-1 w-full md:w-1/3">
           <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
             <Shuffle size={18} />

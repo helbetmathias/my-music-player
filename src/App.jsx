@@ -2,72 +2,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, FolderOpen, FileAudio, 
   Volume2, VolumeX, Repeat, Shuffle, ListMusic, Music, Trash2,
-  Plus, Menu, X, Disc, Search, Mic2, RefreshCw
+  Plus, Menu, X, Disc, Search, Mic2
 } from 'lucide-react';
 
-// --- IndexedDB Helpers for File System API ---
-const DB_CONFIG = { name: 'SonicFlow_DB', version: 1, store: 'handles', key: 'root_dir' };
-
-const getDB = () => new Promise((resolve, reject) => {
-  const request = indexedDB.open(DB_CONFIG.name, DB_CONFIG.version);
-  
-  request.onupgradeneeded = (e) => {
-    const db = e.target.result;
-    if (!db.objectStoreNames.contains(DB_CONFIG.store)) {
-      db.createObjectStore(DB_CONFIG.store);
-    }
-  };
-  
-  request.onsuccess = (e) => resolve(e.target.result);
-  request.onerror = (e) => reject(e.target.error);
-});
-
-const saveHandle = async (handle) => {
-  try {
-    const db = await getDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(DB_CONFIG.store, 'readwrite');
-      const store = tx.objectStore(DB_CONFIG.store);
-      const req = store.put(handle, DB_CONFIG.key);
-      
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.error("Failed to save library handle:", e);
-  }
-};
-
-const getSavedHandle = async () => {
-  try {
-    const db = await getDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(DB_CONFIG.store, 'readonly');
-      const store = tx.objectStore(DB_CONFIG.store);
-      const req = store.get(DB_CONFIG.key);
-      
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    });
-  } catch (e) {
-    return null;
-  }
-};
-
-// Recursive file walker for File System Access API
-async function* getFilesRecursively(entry) {
-  if (entry.kind === 'file') {
-    const file = await entry.getFile();
-    if (file) yield file;
-  } else if (entry.kind === 'directory') {
-    for await (const handle of entry.values()) {
-      yield* getFilesRecursively(handle);
-    }
-  }
-}
-
-// --- Helper Functions ---
+// Helper function to format time (seconds -> MM:SS)
 const formatTime = (time) => {
   if (isNaN(time)) return "0:00";
   const minutes = Math.floor(time / 60);
@@ -75,6 +13,7 @@ const formatTime = (time) => {
   return `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
 };
 
+// Helper to extract dominant color
 const getDominantColor = (imageUrl, callback) => {
   const img = new Image();
   img.crossOrigin = "Anonymous";
@@ -91,25 +30,29 @@ const getDominantColor = (imageUrl, callback) => {
   img.onerror = () => callback(null);
 };
 
+// Helper to parse LRC format
 const parseLRC = (lrcString) => {
   if (!lrcString) return [];
   const lines = lrcString.split('\n');
   const regex = /^\[(\d{2}):(\d{2}(?:\.\d+)?)\](.*)$/;
   const result = [];
+  
   for (const line of lines) {
     const match = line.match(regex);
     if (match) {
       const minutes = parseFloat(match[1]);
       const seconds = parseFloat(match[2]);
       const text = match[3].trim();
-      if (text) result.push({ time: minutes * 60 + seconds, text });
+      if (text) {
+         result.push({ time: minutes * 60 + seconds, text });
+      }
     }
   }
   return result;
 };
 
 export default function App() {
-  // --- State ---
+  // --- State Management ---
   const [playlist, setPlaylist] = useState([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -129,23 +72,22 @@ export default function App() {
   const [lyrics, setLyrics] = useState([]);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
   const [lyricsLoading, setLyricsLoading] = useState(false);
-  
-  // Restore Session State
-  const [canRestoreSession, setCanRestoreSession] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-
   const lyricsContainerRef = useRef(null);
   const lyricsAbortController = useRef(null);
-  const lyricsCache = useRef(new Map());
-  const isInitialSync = useRef(true);
+  const lyricsCache = useRef(new Map()); 
+  const isInitialSync = useRef(true); 
   
+  // Feature States
   const [searchQuery, setSearchQuery] = useState("");
   const [themeColor, setThemeColor] = useState("rgb(99, 102, 241)");
 
+  // Refs
   const audioRef = useRef(null);
   const folderInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const currentTrackIdRef = useRef(null);
+
+  // Visualizer Refs
   const canvasRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -154,86 +96,22 @@ export default function App() {
 
   const supportedTypes = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.webm'];
 
-  // --- Init ---
+  // --- Load jsmediatags ---
   useEffect(() => {
     const script = document.createElement('script');
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js";
     script.async = true;
     document.body.appendChild(script);
-    
-    // Check for saved session on startup
-    checkForSavedSession();
-
-    return () => { if(document.body.contains(script)) document.body.removeChild(script); };
+    return () => {
+      if(document.body.contains(script)) document.body.removeChild(script);
+    };
   }, []);
 
-  const checkForSavedSession = async () => {
-    if (!('showDirectoryPicker' in window)) return; // Not supported
-    const handle = await getSavedHandle();
-    if (handle) {
-      setCanRestoreSession(true);
-    }
-  };
-
-  // --- File System Access API Logic ---
-  const handleRestoreSession = async () => {
-    const handle = await getSavedHandle();
-    if (!handle) return;
-
-    setIsRestoring(true);
-    try {
-      // Browser requires permission re-verification on reload
-      // This MUST be triggered by a user click (which this function is)
-      const permission = await handle.requestPermission({ mode: 'read' });
-      
-      if (permission === 'granted') {
-        const files = [];
-        for await (const file of getFilesRecursively(handle)) {
-           if (supportedTypes.some(ext => file.name.toLowerCase().endsWith(ext))) {
-             files.push(file);
-           }
-        }
-        processFiles(files);
-        setCanRestoreSession(false); // Hide restore button after success
-      } else {
-        alert("Permission denied. Cannot restore library.");
-      }
-    } catch (e) {
-      console.error("Restore failed:", e);
-      alert("Could not restore library. Please add folder again.");
-    } finally {
-      setIsRestoring(false);
-    }
-  };
-
-  const handleAddFolder = async () => {
-    // Prefer File System Access API if available (Chrome/Edge/Opera)
-    if ('showDirectoryPicker' in window) {
-      try {
-        const handle = await window.showDirectoryPicker();
-        await saveHandle(handle); // Persist handle to IndexedDB
-        
-        const files = [];
-        for await (const file of getFilesRecursively(handle)) {
-          if (supportedTypes.some(ext => file.name.toLowerCase().endsWith(ext))) {
-             files.push(file);
-          }
-        }
-        processFiles(files);
-        setCanRestoreSession(false);
-      } catch (e) {
-        // User cancelled or error
-        console.log("Folder pick cancelled", e);
-      }
-    } else {
-      // Fallback for Firefox/Mobile (Standard Input)
-      folderInputRef.current.click();
-    }
-  };
-
-  // --- Fetch Lyrics ---
+  // --- Fetch Lyrics (With Caching & Snap Sync) ---
   const fetchLyrics = async (artist, title) => {
-    if (lyricsAbortController.current) lyricsAbortController.current.abort();
+    if (lyricsAbortController.current) {
+      lyricsAbortController.current.abort();
+    }
     const controller = new AbortController();
     lyricsAbortController.current = controller;
 
@@ -244,7 +122,7 @@ export default function App() {
     if (lyricsCache.current.has(cacheKey)) {
       setLyrics(lyricsCache.current.get(cacheKey));
       setLyricsLoading(false);
-      isInitialSync.current = true;
+      isInitialSync.current = true; 
       return;
     }
 
@@ -252,22 +130,34 @@ export default function App() {
     setLyrics([]);
 
     try {
-      const response = await fetch(`https://lrclib.net/api/search?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTitle)}`, { signal: controller.signal });
+      const response = await fetch(`https://lrclib.net/api/search?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTitle)}`, {
+        signal: controller.signal
+      });
+      
       if (!response.ok) throw new Error('Lyrics not found');
+      
       const data = await response.json();
       let bestMatch = null;
       let parsed = [];
+      
       if (Array.isArray(data) && data.length > 0) {
         bestMatch = data.find(item => item.syncedLyrics);
         if (!bestMatch) bestMatch = data[0];
       }
+
       if (bestMatch) {
-        if (bestMatch.syncedLyrics) parsed = parseLRC(bestMatch.syncedLyrics);
-        else if (bestMatch.plainLyrics) parsed = [{ time: 0, text: bestMatch.plainLyrics }]; 
+        if (bestMatch.syncedLyrics) {
+          parsed = parseLRC(bestMatch.syncedLyrics);
+        } else if (bestMatch.plainLyrics) {
+          parsed = [{ time: 0, text: bestMatch.plainLyrics }]; 
+        }
       }
+
       if (!controller.signal.aborted) {
         setLyrics(parsed);
-        if (parsed.length > 0) lyricsCache.current.set(cacheKey, parsed);
+        if (parsed.length > 0) {
+          lyricsCache.current.set(cacheKey, parsed);
+        }
         isInitialSync.current = true; 
       }
     } catch (e) {
@@ -275,35 +165,51 @@ export default function App() {
         if (!controller.signal.aborted) setLyrics([]);
       }
     } finally {
-      if (!controller.signal.aborted) setLyricsLoading(false);
+      if (!controller.signal.aborted) {
+        setLyricsLoading(false);
+      }
     }
   };
 
-  // --- Audio Logic ---
+  // --- Audio Logic & Metadata ---
   useEffect(() => {
     if (currentTrackIndex !== -1 && playlist[currentTrackIndex]) {
       const track = playlist[currentTrackIndex];
+      
       if (currentTrackIdRef.current !== track.id) {
         currentTrackIdRef.current = track.id;
         const objectUrl = URL.createObjectURL(track.file);
         audioRef.current.src = objectUrl;
         audioRef.current.load();
-        setLyrics([]); setCurrentLyricIndex(-1); setLyricsLoading(true); 
+        
+        setLyrics([]);
+        setCurrentLyricIndex(-1);
+        setLyricsLoading(true); 
+
         if (window.jsmediatags) {
           window.jsmediatags.read(track.file, {
             onSuccess: (tag) => {
               if (track.id !== currentTrackIdRef.current) return;
+
               const { picture, artist, title } = tag.tags;
+              
               if (picture) {
                 const blob = new Blob([new Uint8Array(picture.data)], { type: picture.format });
                 const artUrl = URL.createObjectURL(blob);
                 setActiveCoverArt(artUrl);
-              } else setActiveCoverArt(null);
-              if (artist && title) fetchLyrics(artist, title); 
-              else {
+              } else {
+                setActiveCoverArt(null);
+              }
+
+              if (artist && title) {
+                 fetchLyrics(artist, title); 
+              } else {
                  const parts = track.name.split(' - ');
-                 if (parts.length >= 2) fetchLyrics(parts[0], parts[1]);
-                 else setLyricsLoading(false);
+                 if (parts.length >= 2) {
+                   fetchLyrics(parts[0], parts[1]);
+                 } else {
+                   setLyricsLoading(false);
+                 }
               }
             },
             onError: () => {
@@ -316,32 +222,40 @@ export default function App() {
           });
         }
       }
+      
       if (isPlaying) {
-        audioRef.current.play().then(() => initAudioContext()).catch(e => console.error("Playback failed:", e));
+        audioRef.current.play()
+          .then(() => initAudioContext()) 
+          .catch(e => console.error("Playback failed:", e));
       }
     }
   }, [currentTrackIndex, playlist, isPlaying]); 
 
-  // --- Lyrics Scroll ---
+  // --- Lyrics Scrolling Logic ---
   useEffect(() => {
     if (lyrics.length > 0) {
       const nextIndex = lyrics.findIndex(l => l.time > currentTime);
       const activeIndex = nextIndex === -1 ? lyrics.length - 1 : nextIndex - 1;
+      
       if (activeIndex !== currentLyricIndex) {
         setCurrentLyricIndex(activeIndex);
+        
         if (lyricsContainerRef.current && activeIndex > -1) {
           const activeEl = lyricsContainerRef.current.children[activeIndex];
           if (activeEl) {
             const scrollBehavior = isInitialSync.current ? 'auto' : 'smooth';
-            activeEl.scrollIntoView({ behavior: scrollBehavior, block: 'center' });
+            activeEl.scrollIntoView({ 
+              behavior: scrollBehavior, 
+              block: 'center' 
+            });
             if (isInitialSync.current) isInitialSync.current = false;
           }
         }
       }
     }
-  }, [currentTime, lyrics, isPlaying]);
+  }, [currentTime, lyrics, isPlaying]); 
 
-  // --- Visualizer ---
+  // --- Visualizer Logic ---
   const initAudioContext = () => {
     if (!audioContextRef.current && audioRef.current) {
       try {
@@ -354,14 +268,18 @@ export default function App() {
         analyserRef.current.connect(audioContextRef.current.destination);
         drawVisualizer();
       } catch (e) { console.warn("Audio API error:", e); }
-    } else if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
+    } else if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
   };
+
   const drawVisualizer = () => {
     if (!canvasRef.current || !analyserRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const bufferLength = analyserRef.current.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
+    
     const renderFrame = () => {
       animationRef.current = requestAnimationFrame(renderFrame);
       analyserRef.current.getByteFrequencyData(dataArray);
@@ -381,53 +299,91 @@ export default function App() {
   };
   useEffect(() => { return () => { if(animationRef.current) cancelAnimationFrame(animationRef.current); }; }, []);
 
-  // --- Theme ---
+  // --- Dynamic Theme Color ---
   useEffect(() => {
-    if (activeCoverArt) getDominantColor(activeCoverArt, (color) => { if (color) setThemeColor(color); });
-    else setThemeColor("rgb(99, 102, 241)");
+    if (activeCoverArt) {
+      getDominantColor(activeCoverArt, (color) => { if (color) setThemeColor(color); });
+    } else {
+      setThemeColor("rgb(99, 102, 241)");
+    }
   }, [activeCoverArt]);
 
   const onTimeUpdate = () => setCurrentTime(audioRef.current.currentTime);
   const onLoadedMetadata = () => setDuration(audioRef.current.duration);
   const onEnded = () => {
-    if (repeatMode === 'one') { audioRef.current.currentTime = 0; audioRef.current.play(); } 
-    else playNext();
+    if (repeatMode === 'one') {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play();
+    } else {
+      playNext();
+    }
   };
 
   // --- Controls ---
   const togglePlay = () => {
     initAudioContext();
-    if (currentTrackIndex === -1 && playlist.length > 0) { setCurrentTrackIndex(0); setIsPlaying(true); } 
-    else if (currentTrackIndex !== -1) { if (isPlaying) { audioRef.current.pause(); } else { audioRef.current.play(); } setIsPlaying(!isPlaying); }
+    if (currentTrackIndex === -1 && playlist.length > 0) {
+      setCurrentTrackIndex(0);
+      setIsPlaying(true);
+    } else if (currentTrackIndex !== -1) {
+      if (isPlaying) { audioRef.current.pause(); } else { audioRef.current.play(); }
+      setIsPlaying(!isPlaying);
+    }
   };
+
   const playNext = () => {
     if (playlist.length === 0) return;
     if (isShuffle) setHistory(prev => [...prev, currentTrackIndex]);
     let nextIndex = isShuffle ? Math.floor(Math.random() * playlist.length) : currentTrackIndex + 1;
-    if (nextIndex >= playlist.length) { if (repeatMode === 'all') nextIndex = 0; else { setIsPlaying(false); return; } }
-    setCurrentTrackIndex(nextIndex); setIsPlaying(true);
+    if (nextIndex >= playlist.length) {
+      if (repeatMode === 'all') nextIndex = 0;
+      else { setIsPlaying(false); return; }
+    }
+    setCurrentTrackIndex(nextIndex);
+    setIsPlaying(true);
   };
+
   const playPrev = () => {
     if (playlist.length === 0) return;
     if (currentTime > 3) { audioRef.current.currentTime = 0; return; }
     if (isShuffle && history.length > 0) {
-      const lastIndex = history[history.length - 1]; setHistory(prev => prev.slice(0, -1));
-      setCurrentTrackIndex(lastIndex); setIsPlaying(true); return;
+      const lastIndex = history[history.length - 1];
+      setHistory(prev => prev.slice(0, -1));
+      setCurrentTrackIndex(lastIndex);
+      setIsPlaying(true);
+      return;
     }
-    let prevIndex = currentTrackIndex - 1; if (prevIndex < 0) prevIndex = playlist.length - 1;
-    setCurrentTrackIndex(prevIndex); setIsPlaying(true);
+    let prevIndex = currentTrackIndex - 1;
+    if (prevIndex < 0) prevIndex = playlist.length - 1;
+    setCurrentTrackIndex(prevIndex);
+    setIsPlaying(true);
   };
-  const handleSeek = (e) => { const time = Number(e.target.value); audioRef.current.currentTime = time; setCurrentTime(time); };
-  const handleVolume = (e) => { const vol = Number(e.target.value); setVolume(vol); audioRef.current.volume = vol; setIsMuted(vol === 0); };
-  const toggleMute = () => { if (isMuted) { audioRef.current.volume = volume; setIsMuted(false); } else { audioRef.current.volume = 0; setIsMuted(true); } };
 
-  // --- Shortcuts ---
+  const handleSeek = (e) => {
+    const time = Number(e.target.value);
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+  const handleVolume = (e) => {
+    const vol = Number(e.target.value);
+    setVolume(vol);
+    audioRef.current.volume = vol;
+    setIsMuted(vol === 0);
+  };
+  const toggleMute = () => {
+    if (isMuted) { audioRef.current.volume = volume; setIsMuted(false); }
+    else { audioRef.current.volume = 0; setIsMuted(true); }
+  };
+
+  // --- Media Session & Shortcuts ---
   useEffect(() => {
     const currentTrack = playlist[currentTrackIndex];
     if ('mediaSession' in navigator && currentTrack) {
       const artSrc = activeCoverArt || currentTrack.cover;
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentTrack.name, artist: 'Local Library', album: 'SonicFlow',
+        title: currentTrack.name,
+        artist: 'Local Library',
+        album: 'SonicFlow',
         artwork: artSrc ? [{ src: artSrc, sizes: '512x512', type: 'image/png' }] : []
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
@@ -436,6 +392,7 @@ export default function App() {
       navigator.mediaSession.setActionHandler('previoustrack', playPrev);
       navigator.mediaSession.setActionHandler('nexttrack', playNext);
     }
+
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT') return;
       switch (e.code) {
@@ -445,17 +402,26 @@ export default function App() {
         case 'KeyM': toggleMute(); break;
       }
     };
-    window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentTrackIndex, isPlaying, activeCoverArt, togglePlay, playNext, playPrev, toggleMute]);
 
-  // --- Files ---
+  // --- File Handling ---
   const processFiles = async (files) => {
     const newTracks = Array.from(files)
       .filter(file => supportedTypes.some(ext => file.name.toLowerCase().endsWith(ext)))
-      .map(file => ({ id: Math.random().toString(36).substr(2, 9), name: file.name.replace(/\.[^/.]+$/, ""), type: file.name.split('.').pop().toUpperCase(), file: file, cover: null }))
+      .map(file => ({
+        id: Math.random().toString(36).substr(2, 9),
+        name: file.name.replace(/\.[^/.]+$/, ""),
+        type: file.name.split('.').pop().toUpperCase(),
+        file: file,
+        cover: null 
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
+
     if (newTracks.length === 0) { alert("No supported audio files found."); return; }
     setPlaylist(prev => [...prev, ...newTracks]);
+
     if (window.jsmediatags) {
       newTracks.forEach(track => {
         window.jsmediatags.read(track.file, {
@@ -466,26 +432,42 @@ export default function App() {
               const coverUrl = URL.createObjectURL(blob);
               setPlaylist(prev => prev.map(t => t.id === track.id ? { ...t, cover: coverUrl } : t));
             }
-          }, onError: () => {}
+          },
+          onError: () => {}
         });
       });
     }
   };
+
+  const handleFolderSelect = (e) => processFiles(e.target.files);
   const handleFileSelect = (e) => processFiles(e.target.files);
   const onDragOver = (e) => { e.preventDefault(); setDragOver(true); };
   const onDrop = (e) => {
-    e.preventDefault(); setDragOver(false);
-    if (e.dataTransfer.items) { const files = []; [...e.dataTransfer.items].forEach((item) => { if (item.kind === 'file') files.push(item.getAsFile()); }); processFiles(files); }
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.items) {
+      const files = [];
+      [...e.dataTransfer.items].forEach((item) => { if (item.kind === 'file') files.push(item.getAsFile()); });
+      processFiles(files);
+    }
   };
   const removeTrack = (e, index) => {
-    e.stopPropagation(); const trackToRemove = playlist[index];
+    e.stopPropagation();
+    const trackToRemove = playlist[index];
     if (trackToRemove.cover) URL.revokeObjectURL(trackToRemove.cover);
-    const newPlaylist = [...playlist]; newPlaylist.splice(index, 1);
+    const newPlaylist = [...playlist];
+    newPlaylist.splice(index, 1);
     if (index === currentTrackIndex) {
       if (newPlaylist.length === 0) { setIsPlaying(false); setCurrentTrackIndex(-1); setDuration(0); setCurrentTime(0); setActiveCoverArt(null); currentTrackIdRef.current = null; } 
-      else { let nextIndex = isShuffle ? Math.floor(Math.random() * newPlaylist.length) : (index < newPlaylist.length ? index : 0); setCurrentTrackIndex(nextIndex); currentTrackIdRef.current = null; setIsPlaying(true); }
+      else {
+        let nextIndex = isShuffle ? Math.floor(Math.random() * newPlaylist.length) : (index < newPlaylist.length ? index : 0);
+        setCurrentTrackIndex(nextIndex);
+        currentTrackIdRef.current = null; 
+        setIsPlaying(true);
+      }
     } else if (index < currentTrackIndex) { setCurrentTrackIndex(currentTrackIndex - 1); }
-    setPlaylist(newPlaylist); setHistory([]); 
+    setPlaylist(newPlaylist);
+    setHistory([]); 
   };
   const clearPlaylist = () => {
     playlist.forEach(track => { if(track.cover) URL.revokeObjectURL(track.cover); });
@@ -499,90 +481,159 @@ export default function App() {
   const getOriginalIndex = (trackId) => playlist.findIndex(t => t.id === trackId);
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-indigo-500/30 selection:text-white" onDragOver={onDragOver} onDragLeave={() => setDragOver(false)} onDrop={onDrop}>
-      <input type="file" ref={folderInputRef} onChange={(e) => processFiles(e.target.files)} webkitdirectory="true" directory="" multiple className="hidden" />
+    <div 
+      className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-indigo-500/30 selection:text-white"
+      onDragOver={onDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
+      <input type="file" ref={folderInputRef} onChange={handleFolderSelect} webkitdirectory="true" directory="" multiple className="hidden" />
       <input type="file" ref={fileInputRef} onChange={handleFileSelect} multiple accept="audio/*" className="hidden" />
       <audio ref={audioRef} onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} crossOrigin="anonymous" />
 
+      {/* Drag Overlay */}
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-indigo-900/80 flex items-center justify-center backdrop-blur-sm border-4 border-indigo-400 border-dashed m-4 rounded-2xl">
-          <div className="text-center"><FolderOpen size={64} className="mx-auto mb-4 text-white animate-bounce" /><h2 className="text-3xl font-bold text-white">Drop Files Here</h2></div>
+          <div className="text-center">
+            <FolderOpen size={64} className="mx-auto mb-4 text-white animate-bounce" />
+            <h2 className="text-3xl font-bold text-white">Drop Files Here</h2>
+          </div>
         </div>
       )}
 
       <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg bg-gradient-to-br from-indigo-500 to-purple-600"><Music size={18} className="text-white" /></div>
-          <h1 className="font-bold text-lg tracking-tight text-slate-100">Sonic<span className="text-indigo-400">Flow</span></h1>
+          {/* STATIC LOGO COLORS */}
+          <div 
+            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg bg-gradient-to-br from-indigo-500 to-purple-600"
+          >
+            <Music size={18} className="text-white" />
+          </div>
+          <h1 className="font-bold text-lg tracking-tight text-slate-100">
+            Sonic<span className="text-indigo-400">Flow</span>
+          </h1>
         </div>
+        
         <div className="flex items-center gap-2">
-          {/* Mobile Lyrics Toggle */}
-          <button onClick={() => setShowLyrics(!showLyrics)} className={`md:hidden p-2 rounded-full transition-colors ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}><Mic2 size={24} /></button>
+          {/* Mobile Lyrics Toggle (New Position) */}
+          <button 
+            onClick={() => setShowLyrics(!showLyrics)} 
+            className={`md:hidden p-2 rounded-full transition-colors ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}
+          >
+            <Mic2 size={24} />
+          </button>
 
-          <button onClick={() => fileInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors"><Plus size={16} /> Add Files</button>
-          {/* UPDATED: Calls new handler */}
-          <button onClick={handleAddFolder} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors border border-slate-700"><FolderOpen size={16} /> Add Folder</button>
-          <button onClick={() => setShowPlaylistMobile(!showPlaylistMobile)} className="md:hidden p-2 text-slate-300 hover:bg-slate-800 rounded-full"><ListMusic size={24} /></button>
+          <button onClick={() => fileInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors">
+            <Plus size={16} /> Add Files
+          </button>
+          <button onClick={() => folderInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors border border-slate-700">
+            <FolderOpen size={16} /> Add Folder
+          </button>
+          <button onClick={() => setShowPlaylistMobile(!showPlaylistMobile)} className="md:hidden p-2 text-slate-300 hover:bg-slate-800 rounded-full">
+            <ListMusic size={24} />
+          </button>
         </div>
       </header>
 
+      {/* Main Content */}
       <div className="flex-1 flex relative overflow-hidden">
-        <aside className={`absolute inset-y-0 left-0 z-40 w-full md:w-80 bg-slate-900/95 md:bg-slate-900/50 border-r border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative`}>
+        
+        {/* Sidebar */}
+        <aside className={`
+          absolute inset-y-0 left-0 z-40 w-full md:w-80 bg-slate-900/95 md:bg-slate-900/50 border-r border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl
+          ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative
+        `}>
+          {/* Sidebar Header & Search */}
           <div className="p-4 border-b border-slate-800 flex flex-col gap-3 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2"><ListMusic size={16} /> Queue ({playlist.length})</h2>
+              <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2">
+                <ListMusic size={16} /> Queue ({playlist.length})
+              </h2>
               <div className="flex items-center gap-2">
-                {playlist.length > 0 && <button onClick={clearPlaylist} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 hover:bg-red-500/10 rounded transition-colors"><Trash2 size={12} /> Clear</button>}
-                <button onClick={() => setShowPlaylistMobile(false)} className="md:hidden p-1 text-slate-400 hover:text-white"><X size={20} /></button>
+                {playlist.length > 0 && (
+                  <button onClick={clearPlaylist} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 hover:bg-red-500/10 rounded transition-colors">
+                    <Trash2 size={12} /> Clear
+                  </button>
+                )}
+                <button onClick={() => setShowPlaylistMobile(false)} className="md:hidden p-1 text-slate-400 hover:text-white">
+                  <X size={20} />
+                </button>
               </div>
             </div>
+            {/* Search Input */}
             <div className="relative group">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-300 transition-colors" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search library..." className="w-full bg-slate-800/50 border border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-sm text-slate-200 focus:outline-none focus:border-slate-500 focus:bg-slate-800 transition-all placeholder:text-slate-600" />
+              <input 
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search library..."
+                className="w-full bg-slate-800/50 border border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-sm text-slate-200 focus:outline-none focus:border-slate-500 focus:bg-slate-800 transition-all placeholder:text-slate-600"
+              />
             </div>
           </div>
+
+          {/* Mobile Add Buttons */}
           <div className="md:hidden p-3 flex gap-2 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
              <button onClick={() => { fileInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-slate-800 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><Plus size={14} /> Add Files</button>
-             <button onClick={handleAddFolder} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><FolderOpen size={14} /> Add Folder</button>
+             <button onClick={() => { folderInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><FolderOpen size={14} /> Add Folder</button>
           </div>
+
+          {/* Playlist Items */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 scrollbar-custom pb-24 md:pb-2">
             {filteredPlaylist.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 p-6 text-center opacity-60">
-                {/* Restore Session Button in Empty State */}
-                {canRestoreSession ? (
-                   <div className="flex flex-col items-center gap-3 animate-in fade-in zoom-in duration-300">
-                      <RefreshCw size={48} className={`mb-2 text-indigo-400 ${isRestoring ? 'animate-spin' : ''}`} />
-                      <p className="text-lg font-medium text-indigo-300">Library Found</p>
-                      <button 
-                        onClick={handleRestoreSession}
-                        disabled={isRestoring}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full text-sm font-medium transition-all shadow-lg shadow-indigo-900/50 hover:shadow-indigo-600/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isRestoring ? 'Restoring...' : 'Restore Last Session'}
-                      </button>
-                   </div>
-                ) : (
-                   <>
-                     {searchQuery ? <p>No matches found.</p> : <><Disc size={48} className="mb-2" /><p>No tracks loaded.</p><p className="text-sm hidden md:block">Drag & drop folder here.</p></>}
-                   </>
+                {searchQuery ? <p>No matches found.</p> : (
+                  <>
+                    <Disc size={48} className="mb-2" />
+                    <p>No tracks loaded.</p>
+                    <p className="text-sm hidden md:block">Drag & drop folder here.</p>
+                  </>
                 )}
               </div>
             ) : (
               <ul className="space-y-1">
-                {filteredPlaylist.map((track) => {
+                {filteredPlaylist.map((track, filteredIndex) => {
                   const originalIndex = getOriginalIndex(track.id);
                   return (
-                    <li key={track.id} onClick={() => { if (isShuffle && currentTrackIndex !== -1) { setHistory(prev => [...prev, currentTrackIndex]); } setCurrentTrackIndex(originalIndex); setIsPlaying(true); setShowPlaylistMobile(false); }} className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 select-none ${currentTrackIndex === originalIndex ? 'bg-indigo-600/20 border border-indigo-500/50' : 'hover:bg-slate-800/50 border border-transparent'}`}>
+                    <li 
+                      key={track.id}
+                      onClick={() => {
+                        if (isShuffle && currentTrackIndex !== -1) {
+                           setHistory(prev => [...prev, currentTrackIndex]);
+                        }
+                        setCurrentTrackIndex(originalIndex);
+                        setIsPlaying(true);
+                        setShowPlaylistMobile(false);
+                      }}
+                      className={`
+                        group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 select-none
+                        ${currentTrackIndex === originalIndex 
+                          ? 'bg-indigo-600/20 border border-indigo-500/50' 
+                          : 'hover:bg-slate-800/50 border border-transparent'}
+                      `}
+                    >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded overflow-hidden flex-shrink-0 relative ${currentTrackIndex === originalIndex ? 'ring-2 ring-indigo-500' : 'bg-slate-800'}`}>
-                          {track.cover ? <img src={track.cover} alt="art" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-500"><FileAudio size={18} /></div>}
+                        <div className={`
+                          w-10 h-10 rounded overflow-hidden flex-shrink-0 relative
+                          ${currentTrackIndex === originalIndex ? 'ring-2 ring-indigo-500' : 'bg-slate-800'}
+                        `}>
+                          {track.cover ? (
+                            <img src={track.cover} alt="art" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-500"><FileAudio size={18} /></div>
+                          )}
                         </div>
                         <div className="min-w-0">
-                          <p className={`text-sm font-medium line-clamp-2 leading-normal md:line-clamp-1 ${currentTrackIndex === originalIndex ? 'text-indigo-200' : 'text-slate-300'}`}>{track.name}</p>
+                          <p className={`text-sm font-medium truncate ${currentTrackIndex === originalIndex ? 'text-indigo-200' : 'text-slate-300'}`}>
+                            {track.name}
+                          </p>
                           <p className="text-xs text-slate-500">{track.type}</p>
                         </div>
                       </div>
-                      <button onClick={(e) => removeTrack(e, originalIndex)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition-all"><Trash2 size={14} /></button>
+                      <button onClick={(e) => removeTrack(e, originalIndex)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition-all">
+                        <Trash2 size={14} />
+                      </button>
                     </li>
                   );
                 })}
@@ -591,9 +642,16 @@ export default function App() {
           </div>
         </aside>
 
+        {/* Right: Visualization & Now Playing */}
         <main className="flex-1 flex flex-col items-center justify-center p-8 relative z-0">
-          <div className={`absolute w-96 h-96 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-1000 ${isPlaying ? 'scale-110' : 'scale-90'}`} style={{ backgroundColor: themeColor }}></div>
+          {/* Dynamic Ambient Glow (Subtle) */}
+          <div 
+            className={`absolute w-96 h-96 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-1000 ${isPlaying ? 'scale-110' : 'scale-90'}`}
+            style={{ backgroundColor: themeColor }}
+          ></div>
+          
           <div className="z-10 flex flex-col items-center max-w-2xl w-full text-center space-y-6 md:space-y-8 h-full justify-center">
+            
             {showLyrics ? (
                <div className="w-full h-96 md:h-[500px] bg-black/40 rounded-2xl border border-slate-800 backdrop-blur-sm overflow-hidden relative flex flex-col animate-in fade-in zoom-in duration-300">
                   <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-slate-950/80 to-transparent z-10 pointer-events-none"></div>
@@ -602,59 +660,113 @@ export default function App() {
                        <div className="h-full flex items-center justify-center text-slate-400 animate-pulse">Finding lyrics...</div>
                      ) : lyrics.length > 0 ? (
                        lyrics.map((line, idx) => (
-                         <p key={idx} className={`transition-all duration-500 cursor-pointer ${idx === currentLyricIndex ? 'text-white text-xl md:text-2xl font-bold scale-105 origin-center' : 'text-slate-500 text-lg hover:text-slate-300'}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.time; }}>{line.text}</p>
+                         <p 
+                           key={idx} 
+                           className={`transition-all duration-500 cursor-pointer ${idx === currentLyricIndex ? 'text-white text-xl md:text-2xl font-bold scale-105 origin-center' : 'text-slate-500 text-lg hover:text-slate-300'}`}
+                           onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.time; }}
+                         >
+                           {line.text}
+                         </p>
                        ))
                      ) : (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2"><Mic2 size={48} className="opacity-50" /><p>No synced lyrics found</p><p className="text-xs opacity-60">Try playing a song with Artist/Title tags</p></div>
+                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
+                          <Mic2 size={48} className="opacity-50" />
+                          <p>No synced lyrics found</p>
+                          <p className="text-xs opacity-60">Try playing a song with Artist/Title tags</p>
+                       </div>
                      )}
                   </div>
                   <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-950/80 to-transparent z-10 pointer-events-none"></div>
                </div>
             ) : (
-              <div className={`w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden transition-all duration-500 ${isPlaying ? 'shadow-lg' : 'shadow-black/40'} bg-slate-900 border border-slate-700 group`} style={{ boxShadow: isPlaying ? `0 20px 50px -12px ${themeColor}66` : '' }}>
+              /* Album Art Container */
+              <div 
+                className={`
+                  w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden transition-all duration-500
+                  ${isPlaying ? 'shadow-lg' : 'shadow-black/40'}
+                  bg-slate-900 border border-slate-700 group
+                `}
+                style={{ boxShadow: isPlaying ? `0 20px 50px -12px ${themeColor}66` : '' }}
+              >
                 {(activeCoverArt || (playlist[currentTrackIndex] && playlist[currentTrackIndex].cover)) ? (
                    <div className="relative w-full h-full group-hover:scale-105 transition-transform duration-700 z-10">
-                      <img src={activeCoverArt || playlist[currentTrackIndex].cover} alt="Album Art" className="w-full h-full object-cover animate-in fade-in duration-500" />
+                      <img 
+                        src={activeCoverArt || playlist[currentTrackIndex].cover} 
+                        alt="Album Art" 
+                        className="w-full h-full object-cover animate-in fade-in duration-500"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent"></div>
                    </div>
                 ) : (playlist[currentTrackIndex]) ? (
-                   <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 z-10"><Disc size={120} className={`text-slate-700 ${isPlaying ? 'animate-spin-slow' : ''}`} /></div>
+                   <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 z-10">
+                      <Disc size={120} className={`text-slate-700 ${isPlaying ? 'animate-spin-slow' : ''}`} />
+                   </div>
                 ) : (
                   <div className="text-slate-600 flex flex-col items-center gap-2 z-10"><Music size={64} /></div>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay"><canvas ref={canvasRef} width={320} height={128} className="w-full h-full" /></div>
+
+                {/* Real Audio Visualizer Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay">
+                   <canvas ref={canvasRef} width={320} height={128} className="w-full h-full" />
+                </div>
               </div>
             )}
+
+            {/* Song Info */}
             <div className="space-y-2 w-full px-4">
-              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">{playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}</h2>
-              <p className="font-medium tracking-wide text-sm md:text-base transition-colors duration-1000" style={{ color: themeColor }}>{playlist[currentTrackIndex] ? "Local Library" : "Select files to begin"}</p>
+              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">
+                {playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}
+              </h2>
+              <p className="font-medium tracking-wide text-sm md:text-base transition-colors duration-1000" style={{ color: themeColor }}>
+                {playlist[currentTrackIndex] ? "Local Library" : "Select files to begin"}
+              </p>
             </div>
+
           </div>
         </main>
       </div>
 
+      {/* Player Controls Bar */}
       <div className="h-24 bg-slate-900 border-t border-slate-800 px-4 md:px-8 flex items-center gap-6 z-50 relative flex-shrink-0">
         <div className="flex items-center gap-4 flex-1 md:flex-none justify-center md:justify-start order-2 md:order-1 w-full md:w-1/3">
-          <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Shuffle size={18} /></button>
+          <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
+            <Shuffle size={18} />
+          </button>
           <button onClick={playPrev} className="text-slate-300 hover:text-white transition-colors p-2"><SkipBack size={24} fill="currentColor" /></button>
-          <button onClick={togglePlay} className="w-12 h-12 flex items-center justify-center rounded-full bg-white text-slate-900 hover:scale-105 transition-all shadow-lg shadow-white/10">{isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}</button>
+          <button onClick={togglePlay} className="w-12 h-12 flex items-center justify-center rounded-full bg-white text-slate-900 hover:scale-105 transition-all shadow-lg shadow-white/10">
+            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
+          </button>
           <button onClick={playNext} className="text-slate-300 hover:text-white transition-colors p-2"><SkipForward size={24} fill="currentColor" /></button>
-          <button onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')} className={`p-2 rounded-full transition-colors relative ${repeatMode !== 'none' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Repeat size={18} />{repeatMode === 'one' && <span className="absolute text-[8px] font-bold bottom-1 right-1.5">1</span>}</button>
-          <button onClick={() => setShowLyrics(!showLyrics)} className={`p-2 rounded-full transition-colors hidden md:block ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`} title="Toggle Lyrics"><Mic2 size={18} /></button>
+          <button onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')} className={`p-2 rounded-full transition-colors relative ${repeatMode !== 'none' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
+            <Repeat size={18} />
+            {repeatMode === 'one' && <span className="absolute text-[8px] font-bold bottom-1 right-1.5">1</span>}
+          </button>
+          
+          {/* Desktop Lyrics Toggle */}
+          <button 
+            onClick={() => setShowLyrics(!showLyrics)} 
+            className={`p-2 rounded-full transition-colors hidden md:block ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+            title="Toggle Lyrics"
+          >
+            <Mic2 size={18} />
+          </button>
         </div>
-        <button onClick={() => setShowLyrics(!showLyrics)} className={`md:hidden absolute top-[-50px] right-4 p-3 rounded-full shadow-lg backdrop-blur-md border border-slate-700 z-50 transition-all ${showLyrics ? 'bg-indigo-600 text-white' : 'bg-slate-900/80 text-slate-400'}`}><Mic2 size={20} /></button>
+
         <div className="w-full flex-1 order-1 md:order-2 absolute top-0 left-0 right-0 -mt-1.5 md:relative md:mt-0 md:mx-4 group">
            <div className="flex items-center gap-3 w-full">
              <span className="text-xs font-mono text-slate-400 w-10 text-right hidden md:block">{formatTime(currentTime)}</span>
              <div className="relative flex-1 h-4 flex items-center group-hover:h-4">
                 <input type="range" min={0} max={duration || 0} value={currentTime} onChange={handleSeek} className="absolute z-20 w-full h-full opacity-0 cursor-pointer" />
                 <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full relative transition-colors duration-1000" style={{ width: `${(currentTime / (duration || 1)) * 100}%`, backgroundColor: themeColor }}><div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity md:block hidden" /></div>
+                  <div className="h-full relative transition-colors duration-1000" style={{ width: `${(currentTime / (duration || 1)) * 100}%`, backgroundColor: themeColor }}>
+                     <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity md:block hidden" />
+                  </div>
                 </div>
              </div>
              <span className="text-xs font-mono text-slate-400 w-10 hidden md:block">{formatTime(duration)}</span>
            </div>
         </div>
+
         <div className="hidden md:flex items-center gap-3 w-1/3 justify-end order-3">
            <button onClick={toggleMute} className="text-slate-400 hover:text-white">{isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
            <div className="w-24 group relative flex items-center h-8">
@@ -665,6 +777,7 @@ export default function App() {
            </div>
         </div>
       </div>
+      
       <style>{`
         @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin-slow { animation: spin-slow 8s linear infinite; }

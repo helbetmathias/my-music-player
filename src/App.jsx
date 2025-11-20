@@ -162,6 +162,7 @@ export default function App() {
       }
     } catch (e) {
       if (e.name !== 'AbortError') {
+        console.log("Lyrics fetch failed:", e);
         if (!controller.signal.aborted) setLyrics([]);
       }
     } finally {
@@ -503,137 +504,62 @@ export default function App() {
 
       <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative flex-shrink-0">
         <div className="flex items-center gap-3">
-          {/* STATIC LOGO COLORS */}
-          <div 
-            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg bg-gradient-to-br from-indigo-500 to-purple-600"
-          >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg bg-gradient-to-br from-indigo-500 to-purple-600">
             <Music size={18} className="text-white" />
           </div>
-          <h1 className="font-bold text-lg tracking-tight text-slate-100">
-            Sonic<span className="text-indigo-400">Flow</span>
-          </h1>
+          <h1 className="font-bold text-lg tracking-tight text-slate-100">Sonic<span className="text-indigo-400">Flow</span></h1>
         </div>
-        
         <div className="flex items-center gap-2">
-          {/* Mobile Lyrics Toggle (New Position) */}
-          <button 
-            onClick={() => setShowLyrics(!showLyrics)} 
-            className={`md:hidden p-2 rounded-full transition-colors ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}
-          >
-            <Mic2 size={24} />
-          </button>
-
-          <button onClick={() => fileInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors">
-            <Plus size={16} /> Add Files
-          </button>
-          <button onClick={() => folderInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors border border-slate-700">
-            <FolderOpen size={16} /> Add Folder
-          </button>
-          <button onClick={() => setShowPlaylistMobile(!showPlaylistMobile)} className="md:hidden p-2 text-slate-300 hover:bg-slate-800 rounded-full">
-            <ListMusic size={24} />
-          </button>
+          <button onClick={() => fileInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors"><Plus size={16} /> Add Files</button>
+          <button onClick={() => folderInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors border border-slate-700"><FolderOpen size={16} /> Add Folder</button>
+          <button onClick={() => setShowPlaylistMobile(!showPlaylistMobile)} className="md:hidden p-2 text-slate-300 hover:bg-slate-800 rounded-full"><ListMusic size={24} /></button>
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 flex relative overflow-hidden">
-        
-        {/* Sidebar */}
-        <aside className={`
-          absolute inset-y-0 left-0 z-40 w-full md:w-80 bg-slate-900/95 md:bg-slate-900/50 border-r border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl
-          ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative
-        `}>
-          {/* Sidebar Header & Search */}
+        <aside className={`absolute inset-y-0 left-0 z-40 w-full md:w-80 bg-slate-900/95 md:bg-slate-900/50 border-r border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative`}>
           <div className="p-4 border-b border-slate-800 flex flex-col gap-3 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2">
-                <ListMusic size={16} /> Queue ({playlist.length})
-              </h2>
+              <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2"><ListMusic size={16} /> Queue ({playlist.length})</h2>
               <div className="flex items-center gap-2">
-                {playlist.length > 0 && (
-                  <button onClick={clearPlaylist} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 hover:bg-red-500/10 rounded transition-colors">
-                    <Trash2 size={12} /> Clear
-                  </button>
-                )}
-                <button onClick={() => setShowPlaylistMobile(false)} className="md:hidden p-1 text-slate-400 hover:text-white">
-                  <X size={20} />
-                </button>
+                {playlist.length > 0 && <button onClick={clearPlaylist} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 hover:bg-red-500/10 rounded transition-colors"><Trash2 size={12} /> Clear</button>}
+                <button onClick={() => setShowPlaylistMobile(false)} className="md:hidden p-1 text-slate-400 hover:text-white"><X size={20} /></button>
               </div>
             </div>
-            {/* Search Input */}
             <div className="relative group">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-300 transition-colors" />
-              <input 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search library..."
-                className="w-full bg-slate-800/50 border border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-sm text-slate-200 focus:outline-none focus:border-slate-500 focus:bg-slate-800 transition-all placeholder:text-slate-600"
-              />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search library..." className="w-full bg-slate-800/50 border border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-sm text-slate-200 focus:outline-none focus:border-slate-500 focus:bg-slate-800 transition-all placeholder:text-slate-600" />
             </div>
           </div>
-
-          {/* Mobile Add Buttons */}
           <div className="md:hidden p-3 flex gap-2 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
              <button onClick={() => { fileInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-slate-800 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><Plus size={14} /> Add Files</button>
              <button onClick={() => { folderInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><FolderOpen size={14} /> Add Folder</button>
           </div>
-
-          {/* Playlist Items */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 scrollbar-custom pb-24 md:pb-2">
             {filteredPlaylist.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 p-6 text-center opacity-60">
-                {searchQuery ? <p>No matches found.</p> : (
-                  <>
-                    <Disc size={48} className="mb-2" />
-                    <p>No tracks loaded.</p>
-                    <p className="text-sm hidden md:block">Drag & drop folder here.</p>
-                  </>
-                )}
+                {searchQuery ? <p>No matches found.</p> : <><Disc size={48} className="mb-2" /><p>No tracks loaded.</p><p className="text-sm hidden md:block">Drag & drop folder here.</p></>}
               </div>
             ) : (
               <ul className="space-y-1">
-                {filteredPlaylist.map((track, filteredIndex) => {
+                {filteredPlaylist.map((track) => {
                   const originalIndex = getOriginalIndex(track.id);
                   return (
                     <li 
                       key={track.id}
-                      onClick={() => {
-                        if (isShuffle && currentTrackIndex !== -1) {
-                           setHistory(prev => [...prev, currentTrackIndex]);
-                        }
-                        setCurrentTrackIndex(originalIndex);
-                        setIsPlaying(true);
-                        setShowPlaylistMobile(false);
-                      }}
-                      className={`
-                        group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 select-none
-                        ${currentTrackIndex === originalIndex 
-                          ? 'bg-indigo-600/20 border border-indigo-500/50' 
-                          : 'hover:bg-slate-800/50 border border-transparent'}
-                      `}
+                      onClick={() => { if (isShuffle && currentTrackIndex !== -1) { setHistory(prev => [...prev, currentTrackIndex]); } setCurrentTrackIndex(originalIndex); setIsPlaying(true); setShowPlaylistMobile(false); }}
+                      className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 select-none ${currentTrackIndex === originalIndex ? 'bg-indigo-600/20 border border-indigo-500/50' : 'hover:bg-slate-800/50 border border-transparent'}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`
-                          w-10 h-10 rounded overflow-hidden flex-shrink-0 relative
-                          ${currentTrackIndex === originalIndex ? 'ring-2 ring-indigo-500' : 'bg-slate-800'}
-                        `}>
-                          {track.cover ? (
-                            <img src={track.cover} alt="art" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-slate-500"><FileAudio size={18} /></div>
-                          )}
+                        <div className={`w-10 h-10 rounded overflow-hidden flex-shrink-0 relative ${currentTrackIndex === originalIndex ? 'ring-2 ring-indigo-500' : 'bg-slate-800'}`}>
+                          {track.cover ? <img src={track.cover} alt="art" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-500"><FileAudio size={18} /></div>}
                         </div>
                         <div className="min-w-0">
-                          <p className={`text-sm font-medium truncate ${currentTrackIndex === originalIndex ? 'text-indigo-200' : 'text-slate-300'}`}>
-                            {track.name}
-                          </p>
+                          <p className={`text-sm font-medium line-clamp-2 leading-normal md:line-clamp-1 ${currentTrackIndex === originalIndex ? 'text-indigo-200' : 'text-slate-300'}`}>{track.name}</p>
                           <p className="text-xs text-slate-500">{track.type}</p>
                         </div>
                       </div>
-                      <button onClick={(e) => removeTrack(e, originalIndex)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition-all">
-                        <Trash2 size={14} />
-                      </button>
+                      <button onClick={(e) => removeTrack(e, originalIndex)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition-all"><Trash2 size={14} /></button>
                     </li>
                   );
                 })}
@@ -642,16 +568,9 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Right: Visualization & Now Playing */}
         <main className="flex-1 flex flex-col items-center justify-center p-8 relative z-0">
-          {/* Dynamic Ambient Glow (Subtle) */}
-          <div 
-            className={`absolute w-96 h-96 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-1000 ${isPlaying ? 'scale-110' : 'scale-90'}`}
-            style={{ backgroundColor: themeColor }}
-          ></div>
-          
+          <div className={`absolute w-96 h-96 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-1000 ${isPlaying ? 'scale-110' : 'scale-90'}`} style={{ backgroundColor: themeColor }}></div>
           <div className="z-10 flex flex-col items-center max-w-2xl w-full text-center space-y-6 md:space-y-8 h-full justify-center">
-            
             {showLyrics ? (
                <div className="w-full h-96 md:h-[500px] bg-black/40 rounded-2xl border border-slate-800 backdrop-blur-sm overflow-hidden relative flex flex-col animate-in fade-in zoom-in duration-300">
                   <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-slate-950/80 to-transparent z-10 pointer-events-none"></div>
@@ -660,113 +579,59 @@ export default function App() {
                        <div className="h-full flex items-center justify-center text-slate-400 animate-pulse">Finding lyrics...</div>
                      ) : lyrics.length > 0 ? (
                        lyrics.map((line, idx) => (
-                         <p 
-                           key={idx} 
-                           className={`transition-all duration-500 cursor-pointer ${idx === currentLyricIndex ? 'text-white text-xl md:text-2xl font-bold scale-105 origin-center' : 'text-slate-500 text-lg hover:text-slate-300'}`}
-                           onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.time; }}
-                         >
-                           {line.text}
-                         </p>
+                         <p key={idx} className={`transition-all duration-500 cursor-pointer ${idx === currentLyricIndex ? 'text-white text-xl md:text-2xl font-bold scale-105 origin-center' : 'text-slate-500 text-lg hover:text-slate-300'}`} onClick={() => { if (audioRef.current) audioRef.current.currentTime = line.time; }}>{line.text}</p>
                        ))
                      ) : (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
-                          <Mic2 size={48} className="opacity-50" />
-                          <p>No synced lyrics found</p>
-                          <p className="text-xs opacity-60">Try playing a song with Artist/Title tags</p>
-                       </div>
+                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2"><Mic2 size={48} className="opacity-50" /><p>No synced lyrics found</p><p className="text-xs opacity-60">Try playing a song with Artist/Title tags</p></div>
                      )}
                   </div>
                   <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-950/80 to-transparent z-10 pointer-events-none"></div>
                </div>
             ) : (
-              /* Album Art Container */
-              <div 
-                className={`
-                  w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden transition-all duration-500
-                  ${isPlaying ? 'shadow-lg' : 'shadow-black/40'}
-                  bg-slate-900 border border-slate-700 group
-                `}
-                style={{ boxShadow: isPlaying ? `0 20px 50px -12px ${themeColor}66` : '' }}
-              >
+              <div className={`w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden transition-all duration-500 ${isPlaying ? 'shadow-lg' : 'shadow-black/40'} bg-slate-900 border border-slate-700 group`} style={{ boxShadow: isPlaying ? `0 20px 50px -12px ${themeColor}66` : '' }}>
                 {(activeCoverArt || (playlist[currentTrackIndex] && playlist[currentTrackIndex].cover)) ? (
                    <div className="relative w-full h-full group-hover:scale-105 transition-transform duration-700 z-10">
-                      <img 
-                        src={activeCoverArt || playlist[currentTrackIndex].cover} 
-                        alt="Album Art" 
-                        className="w-full h-full object-cover animate-in fade-in duration-500"
-                      />
+                      <img src={activeCoverArt || playlist[currentTrackIndex].cover} alt="Album Art" className="w-full h-full object-cover animate-in fade-in duration-500" />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent"></div>
                    </div>
                 ) : (playlist[currentTrackIndex]) ? (
-                   <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 z-10">
-                      <Disc size={120} className={`text-slate-700 ${isPlaying ? 'animate-spin-slow' : ''}`} />
-                   </div>
+                   <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 z-10"><Disc size={120} className={`text-slate-700 ${isPlaying ? 'animate-spin-slow' : ''}`} /></div>
                 ) : (
                   <div className="text-slate-600 flex flex-col items-center gap-2 z-10"><Music size={64} /></div>
                 )}
-
-                {/* Real Audio Visualizer Overlay */}
-                <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay">
-                   <canvas ref={canvasRef} width={320} height={128} className="w-full h-full" />
-                </div>
+                <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay"><canvas ref={canvasRef} width={320} height={128} className="w-full h-full" /></div>
               </div>
             )}
-
-            {/* Song Info */}
             <div className="space-y-2 w-full px-4">
-              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">
-                {playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}
-              </h2>
-              <p className="font-medium tracking-wide text-sm md:text-base transition-colors duration-1000" style={{ color: themeColor }}>
-                {playlist[currentTrackIndex] ? "Local Library" : "Select files to begin"}
-              </p>
+              <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">{playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}</h2>
+              <p className="font-medium tracking-wide text-sm md:text-base transition-colors duration-1000" style={{ color: themeColor }}>{playlist[currentTrackIndex] ? "Local Library" : "Select files to begin"}</p>
             </div>
-
           </div>
         </main>
       </div>
 
-      {/* Player Controls Bar */}
       <div className="h-24 bg-slate-900 border-t border-slate-800 px-4 md:px-8 flex items-center gap-6 z-50 relative flex-shrink-0">
         <div className="flex items-center gap-4 flex-1 md:flex-none justify-center md:justify-start order-2 md:order-1 w-full md:w-1/3">
-          <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
-            <Shuffle size={18} />
-          </button>
+          <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Shuffle size={18} /></button>
           <button onClick={playPrev} className="text-slate-300 hover:text-white transition-colors p-2"><SkipBack size={24} fill="currentColor" /></button>
-          <button onClick={togglePlay} className="w-12 h-12 flex items-center justify-center rounded-full bg-white text-slate-900 hover:scale-105 transition-all shadow-lg shadow-white/10">
-            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
-          </button>
+          <button onClick={togglePlay} className="w-12 h-12 flex items-center justify-center rounded-full bg-white text-slate-900 hover:scale-105 transition-all shadow-lg shadow-white/10">{isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}</button>
           <button onClick={playNext} className="text-slate-300 hover:text-white transition-colors p-2"><SkipForward size={24} fill="currentColor" /></button>
-          <button onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')} className={`p-2 rounded-full transition-colors relative ${repeatMode !== 'none' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
-            <Repeat size={18} />
-            {repeatMode === 'one' && <span className="absolute text-[8px] font-bold bottom-1 right-1.5">1</span>}
-          </button>
-          
-          {/* Desktop Lyrics Toggle */}
-          <button 
-            onClick={() => setShowLyrics(!showLyrics)} 
-            className={`p-2 rounded-full transition-colors hidden md:block ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
-            title="Toggle Lyrics"
-          >
-            <Mic2 size={18} />
-          </button>
+          <button onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')} className={`p-2 rounded-full transition-colors relative ${repeatMode !== 'none' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Repeat size={18} />{repeatMode === 'one' && <span className="absolute text-[8px] font-bold bottom-1 right-1.5">1</span>}</button>
+          <button onClick={() => setShowLyrics(!showLyrics)} className={`p-2 rounded-full transition-colors hidden md:block ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`} title="Toggle Lyrics"><Mic2 size={18} /></button>
         </div>
-
+        <button onClick={() => setShowLyrics(!showLyrics)} className={`md:hidden absolute top-[-50px] right-4 p-3 rounded-full shadow-lg backdrop-blur-md border border-slate-700 z-50 transition-all ${showLyrics ? 'bg-indigo-600 text-white' : 'bg-slate-900/80 text-slate-400'}`}><Mic2 size={20} /></button>
         <div className="w-full flex-1 order-1 md:order-2 absolute top-0 left-0 right-0 -mt-1.5 md:relative md:mt-0 md:mx-4 group">
            <div className="flex items-center gap-3 w-full">
              <span className="text-xs font-mono text-slate-400 w-10 text-right hidden md:block">{formatTime(currentTime)}</span>
              <div className="relative flex-1 h-4 flex items-center group-hover:h-4">
                 <input type="range" min={0} max={duration || 0} value={currentTime} onChange={handleSeek} className="absolute z-20 w-full h-full opacity-0 cursor-pointer" />
                 <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full relative transition-colors duration-1000" style={{ width: `${(currentTime / (duration || 1)) * 100}%`, backgroundColor: themeColor }}>
-                     <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity md:block hidden" />
-                  </div>
+                  <div className="h-full relative transition-colors duration-1000" style={{ width: `${(currentTime / (duration || 1)) * 100}%`, backgroundColor: themeColor }}><div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity md:block hidden" /></div>
                 </div>
              </div>
              <span className="text-xs font-mono text-slate-400 w-10 hidden md:block">{formatTime(duration)}</span>
            </div>
         </div>
-
         <div className="hidden md:flex items-center gap-3 w-1/3 justify-end order-3">
            <button onClick={toggleMute} className="text-slate-400 hover:text-white">{isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}</button>
            <div className="w-24 group relative flex items-center h-8">
@@ -777,7 +642,6 @@ export default function App() {
            </div>
         </div>
       </div>
-      
       <style>{`
         @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin-slow { animation: spin-slow 8s linear infinite; }

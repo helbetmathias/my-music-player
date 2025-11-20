@@ -6,37 +6,53 @@ import {
 } from 'lucide-react';
 
 // --- IndexedDB Helpers for File System API ---
-const DB_CONFIG = { name: 'SonicFlow_DB', store: 'handles', key: 'root_dir' };
+const DB_CONFIG = { name: 'SonicFlow_DB', version: 1, store: 'handles', key: 'root_dir' };
 
 const getDB = () => new Promise((resolve, reject) => {
-  const request = indexedDB.open(DB_CONFIG.name, 1);
-  request.onupgradeneeded = e => {
-    if (!e.target.result.objectStoreNames.contains(DB_CONFIG.store)) {
-      e.target.result.createObjectStore(DB_CONFIG.store);
+  const request = indexedDB.open(DB_CONFIG.name, DB_CONFIG.version);
+  
+  request.onupgradeneeded = (e) => {
+    const db = e.target.result;
+    if (!db.objectStoreNames.contains(DB_CONFIG.store)) {
+      db.createObjectStore(DB_CONFIG.store);
     }
   };
-  request.onsuccess = e => resolve(e.target.result);
-  request.onerror = e => reject(e);
+  
+  request.onsuccess = (e) => resolve(e.target.result);
+  request.onerror = (e) => reject(e.target.error);
 });
 
 const saveHandle = async (handle) => {
   try {
     const db = await getDB();
-    const tx = db.transaction(DB_CONFIG.store, 'readwrite');
-    tx.objectStore(DB_CONFIG.store).put(handle, DB_CONFIG.key);
-  } catch (e) { console.warn("DB Save failed", e); }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_CONFIG.store, 'readwrite');
+      const store = tx.objectStore(DB_CONFIG.store);
+      const req = store.put(handle, DB_CONFIG.key);
+      
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.error("Failed to save library handle:", e);
+  }
 };
 
 const getSavedHandle = async () => {
   try {
     const db = await getDB();
-    const tx = db.transaction(DB_CONFIG.store, 'readonly');
-    return new Promise((resolve) => {
-      const req = tx.objectStore(DB_CONFIG.store).get(DB_CONFIG.key);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_CONFIG.store, 'readonly');
+      const store = tx.objectStore(DB_CONFIG.store);
+      const req = store.get(DB_CONFIG.key);
+      
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
     });
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 };
 
 // Recursive file walker for File System Access API
@@ -114,7 +130,7 @@ export default function App() {
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   
-  // New: Restore Session State
+  // Restore Session State
   const [canRestoreSession, setCanRestoreSession] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -145,7 +161,7 @@ export default function App() {
     script.async = true;
     document.body.appendChild(script);
     
-    // Check for saved session
+    // Check for saved session on startup
     checkForSavedSession();
 
     return () => { if(document.body.contains(script)) document.body.removeChild(script); };
@@ -167,7 +183,7 @@ export default function App() {
     setIsRestoring(true);
     try {
       // Browser requires permission re-verification on reload
-      // queryPermission might return 'prompt', so we requestPermission
+      // This MUST be triggered by a user click (which this function is)
       const permission = await handle.requestPermission({ mode: 'read' });
       
       if (permission === 'granted') {
@@ -178,7 +194,9 @@ export default function App() {
            }
         }
         processFiles(files);
-        setCanRestoreSession(false); // Session restored
+        setCanRestoreSession(false); // Hide restore button after success
+      } else {
+        alert("Permission denied. Cannot restore library.");
       }
     } catch (e) {
       console.error("Restore failed:", e);
@@ -189,11 +207,11 @@ export default function App() {
   };
 
   const handleAddFolder = async () => {
-    // Prefer File System Access API if available
+    // Prefer File System Access API if available (Chrome/Edge/Opera)
     if ('showDirectoryPicker' in window) {
       try {
         const handle = await window.showDirectoryPicker();
-        await saveHandle(handle); // Persist handle
+        await saveHandle(handle); // Persist handle to IndexedDB
         
         const files = [];
         for await (const file of getFilesRecursively(handle)) {
@@ -208,7 +226,7 @@ export default function App() {
         console.log("Folder pick cancelled", e);
       }
     } else {
-      // Fallback for Firefox/Mobile
+      // Fallback for Firefox/Mobile (Standard Input)
       folderInputRef.current.click();
     }
   };
@@ -498,6 +516,9 @@ export default function App() {
           <h1 className="font-bold text-lg tracking-tight text-slate-100">Sonic<span className="text-indigo-400">Flow</span></h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* Mobile Lyrics Toggle */}
+          <button onClick={() => setShowLyrics(!showLyrics)} className={`md:hidden p-2 rounded-full transition-colors ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}><Mic2 size={24} /></button>
+
           <button onClick={() => fileInputRef.current.click()} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors"><Plus size={16} /> Add Files</button>
           {/* UPDATED: Calls new handler */}
           <button onClick={handleAddFolder} className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition-colors border border-slate-700"><FolderOpen size={16} /> Add Folder</button>

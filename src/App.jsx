@@ -503,7 +503,6 @@ export default function App() {
 
       <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative flex-shrink-0">
         <div className="flex items-center gap-3">
-          {/* STATIC LOGO COLORS */}
           <div 
             className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg bg-gradient-to-br from-indigo-500 to-purple-600"
           >
@@ -543,7 +542,6 @@ export default function App() {
           absolute inset-y-0 left-0 z-40 w-full md:w-80 bg-slate-900/95 md:bg-slate-900/50 border-r border-slate-800 transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl
           ${showPlaylistMobile ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative
         `}>
-          {/* Sidebar Header & Search */}
           <div className="p-4 border-b border-slate-800 flex flex-col gap-3 flex-shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-slate-400 text-sm uppercase tracking-wider flex items-center gap-2">
@@ -560,7 +558,6 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {/* Search Input */}
             <div className="relative group">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-300 transition-colors" />
               <input 
@@ -573,13 +570,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Mobile Add Buttons */}
           <div className="md:hidden p-3 flex gap-2 border-b border-slate-800 bg-slate-900/50 flex-shrink-0">
              <button onClick={() => { fileInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-slate-800 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><Plus size={14} /> Add Files</button>
              <button onClick={() => { folderInputRef.current.click(); setShowPlaylistMobile(false); }} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2"><FolderOpen size={14} /> Add Folder</button>
           </div>
 
-          {/* Playlist Items */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 scrollbar-custom pb-24 md:pb-2">
             {filteredPlaylist.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4 p-6 text-center opacity-60">
@@ -643,7 +638,7 @@ export default function App() {
         </aside>
 
         {/* Right: Visualization & Now Playing */}
-        <main className="flex-1 flex flex-col items-center justify-center p-8 relative z-0">
+        <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 relative z-0">
           {/* Dynamic Ambient Glow (Subtle) */}
           <div 
             className={`absolute w-96 h-96 rounded-full blur-[100px] opacity-20 pointer-events-none transition-colors duration-1000 ${isPlaying ? 'scale-110' : 'scale-90'}`}
@@ -679,7 +674,6 @@ export default function App() {
                   <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-950/80 to-transparent z-10 pointer-events-none"></div>
                </div>
             ) : (
-              /* Album Art Container */
               <div 
                 className={`
                   w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden transition-all duration-500
@@ -705,14 +699,12 @@ export default function App() {
                   <div className="text-slate-600 flex flex-col items-center gap-2 z-10"><Music size={64} /></div>
                 )}
 
-                {/* Real Audio Visualizer Overlay */}
                 <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay">
                    <canvas ref={canvasRef} width={320} height={128} className="w-full h-full" />
                 </div>
               </div>
             )}
 
-            {/* Song Info */}
             <div className="space-y-2 w-full px-4">
               <h2 className="text-xl md:text-4xl font-bold text-white tracking-tight drop-shadow-lg line-clamp-2 leading-normal md:line-clamp-2 py-1">
                 {playlist[currentTrackIndex] ? playlist[currentTrackIndex].name : "No Track Selected"}
@@ -726,7 +718,6 @@ export default function App() {
         </main>
       </div>
 
-      {/* Player Controls Bar */}
       <div className="h-24 bg-slate-900 border-t border-slate-800 px-4 md:px-8 flex items-center gap-6 z-50 relative flex-shrink-0">
         <div className="flex items-center gap-4 flex-1 md:flex-none justify-center md:justify-start order-2 md:order-1 w-full md:w-1/3">
           <button onClick={() => setIsShuffle(!isShuffle)} className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -742,7 +733,6 @@ export default function App() {
             {repeatMode === 'one' && <span className="absolute text-[8px] font-bold bottom-1 right-1.5">1</span>}
           </button>
           
-          {/* Desktop Lyrics Toggle */}
           <button 
             onClick={() => setShowLyrics(!showLyrics)} 
             className={`p-2 rounded-full transition-colors hidden md:block ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}
@@ -781,6 +771,7 @@ export default function App() {
       <style>{`
         @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin-slow { animation: spin-slow 8s linear infinite; }
+        
         .scrollbar-custom::-webkit-scrollbar { width: 6px; }
         .scrollbar-custom::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
         .scrollbar-custom::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }

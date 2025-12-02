@@ -63,7 +63,7 @@ export default function App() {
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState('none');
   const [showPlaylistMobile, setShowPlaylistMobile] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  // Removed dragOver state as requested
   const [activeCoverArt, setActiveCoverArt] = useState(null);
   const [history, setHistory] = useState([]); 
   
@@ -86,13 +86,6 @@ export default function App() {
   const folderInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const currentTrackIdRef = useRef(null);
-
-  // Visualizer Refs
-  const canvasRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const sourceRef = useRef(null);
-  const animationRef = useRef(null);
 
   const supportedTypes = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.webm'];
 
@@ -225,7 +218,6 @@ export default function App() {
       
       if (isPlaying) {
         audioRef.current.play()
-          .then(() => initAudioContext()) 
           .catch(e => console.error("Playback failed:", e));
       }
     }
@@ -255,50 +247,6 @@ export default function App() {
     }
   }, [currentTime, lyrics, isPlaying]); 
 
-  // --- Visualizer Logic ---
-  const initAudioContext = () => {
-    if (!audioContextRef.current && audioRef.current) {
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioContextRef.current = new AudioContext();
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 128; 
-        sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
-        sourceRef.current.connect(analyserRef.current);
-        analyserRef.current.connect(audioContextRef.current.destination);
-        drawVisualizer();
-      } catch (e) { console.warn("Audio API error:", e); }
-    } else if (audioContextRef.current?.state === 'suspended') {
-      audioContextRef.current.resume();
-    }
-  };
-
-  const drawVisualizer = () => {
-    if (!canvasRef.current || !analyserRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const bufferLength = analyserRef.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    
-    const renderFrame = () => {
-      animationRef.current = requestAnimationFrame(renderFrame);
-      analyserRef.current.getByteFrequencyData(dataArray);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let x = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        const barHeight = (dataArray[i] / 255) * canvas.height;
-        ctx.fillStyle = `rgba(255, 255, 255, 0.5)`; 
-        ctx.beginPath();
-        ctx.roundRect(x, canvas.height - barHeight, barWidth - 1, barHeight, [2, 2, 0, 0]);
-        ctx.fill();
-        x += barWidth;
-      }
-    };
-    renderFrame();
-  };
-  useEffect(() => { return () => { if(animationRef.current) cancelAnimationFrame(animationRef.current); }; }, []);
-
   // --- Dynamic Theme Color ---
   useEffect(() => {
     if (activeCoverArt) {
@@ -321,7 +269,6 @@ export default function App() {
 
   // --- Controls ---
   const togglePlay = () => {
-    initAudioContext();
     if (currentTrackIndex === -1 && playlist.length > 0) {
       setCurrentTrackIndex(0);
       setIsPlaying(true);
@@ -441,16 +388,9 @@ export default function App() {
 
   const handleFolderSelect = (e) => processFiles(e.target.files);
   const handleFileSelect = (e) => processFiles(e.target.files);
-  const onDragOver = (e) => { e.preventDefault(); setDragOver(true); };
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.items) {
-      const files = [];
-      [...e.dataTransfer.items].forEach((item) => { if (item.kind === 'file') files.push(item.getAsFile()); });
-      processFiles(files);
-    }
-  };
+  
+  // DRAG AND DROP REMOVED COMPLETELY (No onDrop/onDragOver on container)
+
   const removeTrack = (e, index) => {
     e.stopPropagation();
     const trackToRemove = playlist[index];
@@ -483,23 +423,12 @@ export default function App() {
   return (
     <div 
       className="flex flex-col h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-indigo-500/30 selection:text-white"
-      onDragOver={onDragOver}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={onDrop}
     >
       <input type="file" ref={folderInputRef} onChange={handleFolderSelect} webkitdirectory="true" directory="" multiple className="hidden" />
       <input type="file" ref={fileInputRef} onChange={handleFileSelect} multiple accept="audio/*" className="hidden" />
       <audio ref={audioRef} onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} crossOrigin="anonymous" />
 
-      {/* Drag Overlay */}
-      {dragOver && (
-        <div className="absolute inset-0 z-50 bg-indigo-900/80 flex items-center justify-center backdrop-blur-sm border-4 border-indigo-400 border-dashed m-4 rounded-2xl">
-          <div className="text-center">
-            <FolderOpen size={64} className="mx-auto mb-4 text-white animate-bounce" />
-            <h2 className="text-3xl font-bold text-white">Drop Files Here</h2>
-          </div>
-        </div>
-      )}
+      {/* No Drag Overlay */}
 
       <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20 relative flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -514,7 +443,7 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Mobile Lyrics Toggle (New Position) */}
+          {/* Mobile Lyrics Toggle */}
           <button 
             onClick={() => setShowLyrics(!showLyrics)} 
             className={`md:hidden p-2 rounded-full transition-colors ${showLyrics ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-300 hover:bg-slate-800'}`}
@@ -698,10 +627,7 @@ export default function App() {
                 ) : (
                   <div className="text-slate-600 flex flex-col items-center gap-2 z-10"><Music size={64} /></div>
                 )}
-
-                <div className="absolute bottom-0 left-0 right-0 h-32 z-20 pointer-events-none opacity-90 mix-blend-overlay">
-                   <canvas ref={canvasRef} width={320} height={128} className="w-full h-full" />
-                </div>
+                {/* Visualizer Removed */}
               </div>
             )}
 
